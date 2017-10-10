@@ -1,0 +1,207 @@
+* >Natural Source Header 000000
+* :Mode S
+* :CP
+* <Natural Source Header
+define data 
+    parameter using request
+    local using adatable
+    local using rh4nldem
+    local
+        1 cmd (A) DYNAMIC
+        1 i (I4)
+        1 array-size (I4)
+        1 such-parm-balls (A128)
+        1 redefine such-parm-balls
+            2 indent (A5)
+            2 id (N3)
+            2 color (A17)
+        1 such-parm-state (A128)
+        1 redefine such-parm-state
+            2 indent (A5)
+            2 play-state (A1)
+        1 parm-id (A3)
+        1 redefine parm-id
+            2 parm-id-n (N3)
+        1 found-state (L) init <false>
+end-define
+
+for i = 1 to HTTP_PARM_COUNT
+    if HTTP_KEYS(i) = 'cmd'
+        move http_vals(i) to cmd
+    end-if
+end-for
+
+decide on first value of cmd
+    value "getinfos"
+        perform GetBallInfos
+    value "addball"
+        perform addBall
+    value "pause"
+        perform pause
+    value "play"
+        perform play
+    value "deleteball"
+        perform deleteBall
+    none
+        ignore
+end-decide
+
+close work file 1
+
+define subroutine deleteBall
+    for i=1 to HTTP_PARM_COUNT
+        if HTTP_KEYS(i) = "id"
+            move right JUSTIFIED http_vals(i) to parm-id 
+        end-if    
+    end-for
+    
+    if parm-id = " "
+        move true to delete-ball.error
+        move "ID is missing" to delete-ball.msg
+        call interface4 "genjson" "RH4NLDEM" "delete-ball"
+           REALHTML_TMPFILE REALHTML_SETTINGS delete-ball
+        escape routine
+    end-if
+     
+    read notizbuch
+        move notizbuch.NOTIZ-DATEN(1) to such-parm-balls
+        if such-parm-balls.indent = 'RH4ND'
+            if such-parm-balls.id = parm-id-n
+                delete
+                escape bottom
+            end-if
+        end-if
+    end-read
+    
+    end of transaction
+    
+    move false to delete-ball.error
+    
+    call interface4 "genjson" "RH4NLDEM" "delete-ball"
+           REALHTML_TMPFILE REALHTML_SETTINGS delete-ball
+end-subroutine
+
+define subroutine pause
+    read notizbuch
+        move notizbuch.NOTIZ-DATEN(1) to such-parm-state
+        if such-parm-state.indent = 'RH4NS'
+            move true to found-state
+            move " " to play-state
+            move such-parm-state to notizbuch.notiz-daten(1)
+            update
+            move "updated entry" to pause-balls.msg 
+            escape bottom
+        end-if
+    end-read
+    
+    if not found-state
+        move "RH4NS" to such-parm-state.indent
+        move " " to such-parm-state.play-state
+        move such-parm-state to notizbuch.notiz-daten(1)
+        store notizbuch
+        move "added entry" to pause-balls.msg
+    end-if
+    
+    end of transaction
+    
+    call interface4 "genjson" "RH4NLDEM" "pause-balls"
+           REALHTML_TMPFILE REALHTML_SETTINGS pause-balls
+end-subroutine
+
+define subroutine play
+    read notizbuch
+        move notizbuch.NOTIZ-DATEN(1) to such-parm-state
+        if such-parm-state.indent = 'RH4NS'
+            move true to found-state
+            move "X" to play-state
+            move such-parm-state to notizbuch.notiz-daten(1)
+            update
+            move "updated entry" to pause-balls.msg
+            escape bottom
+        end-if
+    end-read
+    
+    if not found-state
+        move "RH4NS" to such-parm-state.indent
+        move "X" to such-parm-state.play-state
+        move such-parm-state to notizbuch.notiz-daten(1)
+        store notizbuch
+        move "added entry" to pause-balls.msg
+    end-if
+    
+    end of transaction
+    
+    call interface4 "genjson" "RH4NLDEM" "pause-balls"
+           REALHTML_TMPFILE REALHTML_SETTINGS pause-balls
+end-subroutine
+
+define subroutine addBall
+    move false to add-ball.error
+    
+    for i = 1 to HTTP_PARM_COUNT
+        if http_keys(i) = "id"
+            move right JUSTIFIED http_vals(i) to parm-id 
+        end-if
+        if http_keys(i) = "color"
+            move http_vals(i) to such-parm-balls.color
+        end-if
+    end-for
+    
+    if parm-id = " "
+        move true to add-ball.error
+        move "ID is missing" to add-ball.msg
+        call interface4 "genjson" "RH4NLDEM" "add-ball"
+           REALHTML_TMPFILE REALHTML_SETTINGS add-ball
+        escape routine
+    end-if
+    if such-parm-balls.color = " "
+        move true to add-ball.error
+        move "ID is missing" to add-ball.msg
+        call interface4 "genjson" "RH4NLDEM" "add-ball"
+           REALHTML_TMPFILE REALHTML_SETTINGS add-ball
+        escape routine
+    end-if
+    
+    move parm-id-n to such-parm-balls.id
+    move "RH4ND" to such-parm-balls.indent
+    
+    move such-parm-balls to notizbuch.notiz-daten(1)
+    
+    store notizbuch
+    end of transaction
+    
+    call interface4 "genjson" "RH4NLDEM" "add-ball"
+           REALHTML_TMPFILE REALHTML_SETTINGS add-ball
+end-subroutine
+
+define subroutine GetBallInfos
+    move true to play-state
+    move 1 to array-size
+    
+    read notizbuch
+        move notizbuch.NOTIZ-DATEN(1) to such-parm-balls
+        if such-parm-balls.indent = 'RH4ND'
+            expand array balls to (1:array-size)
+            move such-parm-balls.id to ball-info.id(array-size)
+            move such-parm-balls.color to ball-info.color(array-size)            
+            add 1 to array-size
+        else if such-parm-balls.indent = 'RH4NS'
+            move notizbuch.NOTIZ-DATEN(1) to such-parm-state
+            if such-parm-state.play-state = 'X'
+                move true to ball-info.state
+            else
+                move false to ball-info.state
+            end-if
+        end-if
+        end-if
+    end-read
+    
+    if *OCCURRENCE(ball-info.id) = 0
+        expand array balls to (1:1)
+    end-if
+    
+    call interface4 "genjson" "RH4NLDEM" "ball-info"
+           REALHTML_TMPFILE REALHTML_SETTINGS ball-info
+           
+end-subroutine
+END
